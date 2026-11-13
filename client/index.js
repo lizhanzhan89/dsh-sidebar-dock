@@ -823,6 +823,7 @@ window.__ModuleLoader__.load({
               candidate.setAttribute('data-dsh-sidebar-dock-hidden', '');
               if (wrapper.nextElementSibling !== candidate) root.insertBefore(wrapper, candidate);
             }
+            syncRail();
             return true;
           }
 
