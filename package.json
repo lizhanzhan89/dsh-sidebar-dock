@@ -1,0 +1,47 @@
+{
+  "name": "@local/dsh-sidebar-dock",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fold the DSH sidebar panel list into a compact dropdown beside New Session.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lizhanzhan89/dsh-sidebar-dock.git"
+  },
+  "homepage": "https://github.com/lizhanzhan89/dsh-sidebar-dock#readme",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "sidebar",
+    "plugin"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client/index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client/index.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  }
+}
