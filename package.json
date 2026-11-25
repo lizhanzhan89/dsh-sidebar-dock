@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-sidebar-dock",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Fold the DSH sidebar panel list into a compact dropdown beside New Session.",

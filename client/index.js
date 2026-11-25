@@ -44,30 +44,35 @@ window.__ModuleLoader__.load({
         position: relative;
       }
 
-      [data-dsh-sidebar-dock-root] > .hHd-Xa_panelList {
+      /* The panel list lives under .hHd-Xa_scrollArea in newer shells, so use
+         descendant selectors rather than a child combinator off the root. */
+      [data-dsh-sidebar-dock-root] .hHd-Xa_panelList {
         display: none !important;
       }
 
-      [data-dsh-sidebar-dock-root][data-dsh-sidebar-dock-has-pinned] > .hHd-Xa_panelList {
+      [data-dsh-sidebar-dock-root][data-dsh-sidebar-dock-has-pinned] .hHd-Xa_panelList {
         display: flex !important;
       }
 
-      [data-dsh-sidebar-dock-root] > .hHd-Xa_panelList > button.hHd-Xa_panelRow,
-      [data-dsh-sidebar-dock-root] > .hHd-Xa_panelList > .hHd-Xa_moreAnchor {
+      [data-dsh-sidebar-dock-root] .hHd-Xa_panelList > .hHd-Xa_panelRow,
+      [data-dsh-sidebar-dock-root] .hHd-Xa_panelList > .hHd-Xa_panelEntry,
+      [data-dsh-sidebar-dock-root] .hHd-Xa_panelList > .hHd-Xa_moreAnchor {
         display: none !important;
       }
 
-      [data-dsh-sidebar-dock-root][data-dsh-sidebar-dock-has-pinned] > .hHd-Xa_panelList > button.hHd-Xa_panelRow[data-dsh-sidebar-dock-pinned] {
+      [data-dsh-sidebar-dock-root][data-dsh-sidebar-dock-has-pinned] .hHd-Xa_panelList > .hHd-Xa_panelRow[data-dsh-sidebar-dock-pinned],
+      [data-dsh-sidebar-dock-root][data-dsh-sidebar-dock-has-pinned] .hHd-Xa_panelList > .hHd-Xa_panelEntry[data-dsh-sidebar-dock-pinned] {
         display: flex !important;
       }
 
-      [data-dsh-sidebar-dock-root][data-dsh-sidebar-dock-has-pinned] > .hHd-Xa_panelList > .hHd-Xa_moreAnchor[data-dsh-sidebar-dock-pinned] {
+      [data-dsh-sidebar-dock-root][data-dsh-sidebar-dock-has-pinned] .hHd-Xa_panelList > .hHd-Xa_moreAnchor[data-dsh-sidebar-dock-pinned] {
         display: flex !important;
       }
 
       /* Hide the original by structure as well: if React replaces the button,
-         the replacement must never paint for even one frame. */
-      [data-dsh-sidebar-dock-root] > button.hHd-Xa_newSession:not(.dsh-sidebar-dock-new) {
+         the replacement must never paint for even one frame. The host wraps the
+         button in .hHd-Xa_newSessionRow, so target both nestings. */
+      [data-dsh-sidebar-dock-root] button.hHd-Xa_newSession:not(.dsh-sidebar-dock-new) {
         display: none !important;
       }
 
@@ -83,6 +88,17 @@ window.__ModuleLoader__.load({
         margin: 0 calc(var(--dsh-sidebar-paint-inset, 3px) + 1px) 10px;
         box-sizing: border-box;
         min-width: 0;
+      }
+
+      /* When mounted beside the new-session button inside the host's
+         .hHd-Xa_newSessionRow, the dock row participates in that flex row (the
+         host wraps the button in a display:contents slot div). Let it grow to
+         fill the row and drop the standalone vertical margin. */
+      .hHd-Xa_newSessionRow .dsh-sidebar-dock-row,
+      .dsh-sidebar-dock-row[data-dsh-sidebar-dock-in-row] {
+        flex: 1 1 auto;
+        width: 100%;
+        margin: 0;
       }
 
       .dsh-sidebar-dock-new {
@@ -358,10 +374,30 @@ window.__ModuleLoader__.load({
       return entries.sort((a, b) => a.order - b.order);
     }
 
-    /** The shell's row for one panel entry. */
+    /**
+     * The shell's DOM element for one panel entry. Across DSH versions this is
+     * either a `button.hHd-Xa_panelRow` (older) or a `div.hHd-Xa_panelEntry`
+     * wrapping such a button (0.2.2-rc.5+); match both and read the label from
+     * whichever element carries aria-label.
+     */
     function panelRowFor(label) {
-      const rows = Array.from(document.querySelectorAll('button.hHd-Xa_panelRow'));
-      return rows.find((row) => row.getAttribute('aria-haspopup') !== 'menu' && (row.getAttribute('aria-label') || '') === label) || null;
+      const rows = Array.from(document.querySelectorAll('.hHd-Xa_panelRow, .hHd-Xa_panelEntry'));
+      return rows.find((row) => {
+        if (row.getAttribute('aria-haspopup') === 'menu') return false;
+        const own = row.getAttribute('aria-label');
+        if (own === label) return true;
+        const inner = row.querySelector('[aria-label]');
+        return !!(inner && inner.getAttribute('aria-label') === label);
+      }) || null;
+    }
+
+    /** Resolve the label shown by a panel row/entry element. */
+    function rowLabel(row) {
+      if (!row) return '';
+      const own = row.getAttribute('aria-label');
+      if (own) return own;
+      const inner = row.querySelector('[aria-label]');
+      return inner ? (inner.getAttribute('aria-label') || '') : '';
     }
 
     /** Copy a live panel row's glyph (including plugin-authored SVG markup). */
@@ -373,10 +409,13 @@ window.__ModuleLoader__.load({
       return markup === '' ? GENERIC_GLYPH : markup;
     }
 
-    /** Is this panel currently selected? The shell marks its row. */
+    /** Is this panel currently selected? The shell marks its row (or its inner button). */
     function isActive(row) {
       if (!row) return false;
-      return row.getAttribute('aria-current') === 'page' || String(row.className).includes('panelActive');
+      const targets = [row];
+      const inner = row.querySelector('[aria-current], [class*="panelActive"]');
+      if (inner) targets.push(inner);
+      return targets.some((el) => el.getAttribute('aria-current') === 'page' || String(el.className).includes('panelActive'));
     }
 
     function plugin(ctx) {
@@ -451,12 +490,12 @@ window.__ModuleLoader__.load({
               /** Mark host rows so only the user-pinned ones appear under New Session. */
               function applyPinnedRows() {
                 if (!root) return;
-                const rows = Array.from(root.querySelectorAll('.hHd-Xa_panelList button.hHd-Xa_panelRow'));
+                const rows = Array.from(root.querySelectorAll('.hHd-Xa_panelRow, .hHd-Xa_panelEntry'));
                 const entries = panelEntries(ctx);
                 let any = false;
                 const matched = new Set();
                 for (const entry of entries) {
-                  const row = rows.find((candidate) => candidate.getAttribute('aria-haspopup') !== 'menu' && (candidate.getAttribute('aria-label') || '') === entry.label);
+                  const row = rows.find((candidate) => candidate.getAttribute('aria-haspopup') !== 'menu' && rowLabel(candidate) === entry.label);
                   if (!row) continue;
                   row.setAttribute('data-dsh-sidebar-dock-panel-id', entry.id);
                   const visible = pinned.has(entry.id);
@@ -465,7 +504,7 @@ window.__ModuleLoader__.load({
                   if (visible) any = true;
                 }
                 const moreRow = rows.find((candidate) => candidate.getAttribute('aria-haspopup') === 'menu');
-                const moreAnchor = moreRow && moreRow.closest('.hHd-Xa_moreAnchor');
+                const moreAnchor = moreRow && (moreRow.closest('.hHd-Xa_moreAnchor') || moreRow);
                 if (moreRow && moreAnchor) {
                   const visible = pinned.has(MORE_ID);
                   moreAnchor.toggleAttribute('data-dsh-sidebar-dock-more-row', true);
@@ -473,7 +512,7 @@ window.__ModuleLoader__.load({
                   if (visible) any = true;
                 }
                 for (const row of rows) {
-                  if (!matched.has(row) && row !== moreRow) {
+                  if (!matched.has(row) && row !== moreRow && !(moreAnchor && row.closest('.hHd-Xa_moreAnchor') === moreAnchor)) {
                     row.removeAttribute('data-dsh-sidebar-dock-panel-id');
                     row.removeAttribute('data-dsh-sidebar-dock-pinned');
                   }
@@ -620,7 +659,7 @@ window.__ModuleLoader__.load({
             separator.setAttribute('role', 'separator');
             menu.appendChild(separator);
 
-            const moreRow = document.querySelector('button.hHd-Xa_panelRow[aria-haspopup="menu"]');
+            const moreRow = document.querySelector('.hHd-Xa_panelList [aria-haspopup="menu"]');
             moreToggle = document.createElement('button');
             moreToggle.type = 'button';
             moreToggle.className = 'dsh-sidebar-dock-item';
@@ -789,6 +828,11 @@ window.__ModuleLoader__.load({
               || candidates[0];
             if (!candidate || !candidate.parentElement) return false;
             const nextRoot = candidate.closest('.hHd-Xa_root') || candidate.parentElement;
+            // The dock row lives beside the New Session button, inside the same
+            // parent element the host uses (historically .hHd-Xa_root directly,
+            // now usually .hHd-Xa_newSessionRow > div). Mounting at the button's
+            // own parent keeps us aligned with the host's layout in either case.
+            const mountParent = candidate.parentElement;
             if (nextRoot !== root) {
               cleanupRoot();
               root = nextRoot;
@@ -797,14 +841,14 @@ window.__ModuleLoader__.load({
               root.classList.add('dsh-sidebar-dock-root');
               createMenu();
               makeWrapper();
-              root.insertBefore(wrapper, originalNewSession);
+              mountWrapper(mountParent, candidate);
               originalNewSession.setAttribute('data-dsh-sidebar-dock-hidden', '');
               resizeObserver = new ResizeObserver(() => schedule());
               resizeObserver.observe(root);
               syncRail();
-            } else if (!wrapper || !wrapper.isConnected || wrapper.parentElement !== root) {
+            } else if (!wrapper || !wrapper.isConnected || wrapper.parentElement !== mountParent) {
               if (!wrapper) makeWrapper();
-              root.insertBefore(wrapper, originalNewSession || candidate);
+              mountWrapper(mountParent, candidate);
               originalNewSession = candidate;
               originalNewSession.setAttribute('data-dsh-sidebar-dock-hidden', '');
             }
@@ -818,13 +862,29 @@ window.__ModuleLoader__.load({
             applyPinnedRows();
             if (trigger.parentElement !== wrapper) wrapper.appendChild(trigger);
             if (clone.parentElement !== wrapper) wrapper.insertBefore(clone, trigger);
-            if (root && candidate.parentElement === root) {
+            if (candidate.parentElement === mountParent && wrapper.parentElement === mountParent
+                && wrapper.nextElementSibling !== candidate) {
               originalNewSession = candidate;
               candidate.setAttribute('data-dsh-sidebar-dock-hidden', '');
-              if (wrapper.nextElementSibling !== candidate) root.insertBefore(wrapper, candidate);
+              mountParent.insertBefore(wrapper, candidate);
             }
             syncRail();
             return true;
+          }
+
+          // Insert the dock row immediately before the New Session button in
+          // whichever container holds that button today.
+          function mountWrapper(parent, candidate) {
+            if (!parent || !wrapper) return;
+            if (wrapper.parentElement !== parent || wrapper.nextElementSibling !== candidate) {
+              parent.insertBefore(wrapper, candidate);
+            }
+            // The host may wrap the New Session button in a
+            // .hHd-Xa_newSessionRow flex row (with a display:contents slot div
+            // around the button). When we sit inside that row, flag the dock row
+            // so its CSS can grow to fill the available width.
+            const inRow = !!(parent.closest && parent.closest('.hHd-Xa_newSessionRow'));
+            wrapper.toggleAttribute('data-dsh-sidebar-dock-in-row', inRow);
           }
 
           function syncRail() {
