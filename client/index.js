@@ -571,6 +571,10 @@ window.__ModuleLoader__.load({
               savePinned();
               sync();
               applyPinnedRows();
+              // A React re-render of the panel nav can land a tick later than this
+              // click; re-apply on the next frames so the toggled row reliably
+              // shows/hides without a transient stale paint.
+              schedule();
             });
             return pin;
           }
